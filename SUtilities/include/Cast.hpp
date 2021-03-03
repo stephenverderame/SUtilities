@@ -22,7 +22,7 @@ namespace SUtil {
 	}
 
 	template<typename R, typename T>
-		requires (!std::is_enum_v<R> && (std::is_arithmetic_v<T> || std::is_enum_v<T>))
+		requires (std::is_arithmetic_v<R> && (std::is_arithmetic_v<T> || std::is_enum_v<T>))
 	bool isSignMismatch(T val) {
 		return val < static_cast<T>(0) && !std::is_signed_v<R>;
 	}
