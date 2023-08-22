@@ -1,5 +1,4 @@
 ﻿// SUtilities.cpp : Defines the entry point for the application.
-import module Cast;
 #include "SUtilities.h"
 #include "include/TypeList.hpp"
 #include "include/Visitor.hpp"

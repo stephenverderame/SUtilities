@@ -47,7 +47,7 @@ namespace SUtil {
 
 	class DeadReferenceException : public std::exception {
 	public:
-		const char* what() const override {
+		const char* what() const noexcept override {
 			return "A previously destroyed singleton has been accessed";
 		}
 	};

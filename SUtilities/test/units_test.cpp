@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <iostream>
 #include "units.hpp"
 
@@ -12,16 +13,16 @@ struct Length : SEMANTIC_UNIT_TYPE {};
 struct Width : SEMANTIC_UNIT_TYPE {};
 struct Depth : SEMANTIC_UNIT_TYPE {};
 
-using volume_t = Unit<double, 1, 
+using volume_t = Unit<double, Rational(1), 
     sort_unit_pack_t<Pack<PowerType<Length, 1, 1>, PowerType<Width, 1, 1>, PowerType<Depth, 1, 1>>>,
     Pack<PowerType<Meters, 3, 1>>>;
 
-using area_t = Unit<double, 1, 
+using area_t = Unit<double, Rational(1), 
     sort_unit_pack_t<Pack<PowerType<Length, 1, 1>, PowerType<Width, 1, 1>>>,
     Pack<PowerType<Meters, 2, 1>>>;
 
 template<typename Semantic>
-using dist_t = Unit<double, 1, Pack<PowerType<Semantic, 1, 1>>, Pack<PowerType<Meters, 1, 1>>>;
+using dist_t = Unit<double, Rational(1), Pack<PowerType<Semantic, 1, 1>>, Pack<PowerType<Meters, 1, 1>>>;
 
 
 constexpr auto foo(volume_t vol) {
@@ -34,6 +35,20 @@ constexpr char foo(T) { return 'a'; }
 
 constexpr auto bar(area_t area) {
     return area * 2.;
+}
+
+using sec_t = Unit<double, Rational(1), Pack<EmptyPack>, Pack<PowerType<Seconds, 1, 1>>>;
+
+using hour_t = Unit<double, Rational(3600), Pack<EmptyPack>, Pack<PowerType<Seconds, 1, 1>>>;
+
+using km_t = Unit<double, Rational(1000), Pack<EmptyPack>, Pack<PowerType<Meters, 1, 1>>>;
+
+using meter_t = Unit<double, Rational(1), Pack<EmptyPack>, Pack<PowerType<Meters, 1, 1>>>;
+
+using meter_per_sec = decltype(std::declval<meter_t>() / std::declval<sec_t>());
+
+constexpr auto get_speed(meter_per_sec speed) {
+    return speed;
 }
 
 
@@ -102,7 +117,21 @@ int main() {
     static_assert(std::is_same_v<std::__remove_cvref_t<decltype(w2)>, char>);
 
     static_assert(std::is_same_v<decltype(semantic_cast<NoSemanticType>(x)), 
-        Unit<double, 1, NoSemanticType, Pack<PowerType<Meters, 1, 1>>>>);
+        Unit<double, Rational(1), NoSemanticType, Pack<PowerType<Meters, 1, 1>>>>);
+
+    constexpr auto f = meter_t{10} / sec_t{2};
+    constexpr auto t = km_t{10} / hour_t{2};
+
+    constexpr auto g = 1.0 / hour_t{2};
+
+    static_assert(get_speed(f).val == 5);
+    static_assert(get_speed(t).val == 5 / 3.6);
+
+    auto k = pow<2, 1>(km_t{10});
+    if (k.val != 10 * 10 * 1000 * 1000) {
+        std::cout << "pow failed: " << k.val << std::endl;
+        std::abort();
+    }
 
 
 }

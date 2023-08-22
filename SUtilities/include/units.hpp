@@ -26,11 +26,63 @@
  * @copyright Copyright (c) 2022
  * 
  */
+#include <stdexcept>
 #include <type_traits>
 #include <typeinfo>
 #include <cstdint>
 #include <cmath>
 using std::size_t;
+
+constexpr int gcd(int a, int b) {
+    return b == 0 ? a : gcd(b, a % b);
+}
+
+/// A rational number
+struct Rational {
+    int64_t num;
+    int64_t den;
+
+    explicit constexpr Rational(int64_t num) : num(num), den(1) {}
+
+    constexpr Rational(int64_t num, int64_t den) {
+        int64_t div = gcd(num, den);
+        this->den = den / div < 0 ? -den / div : den / div;
+        this->num = den / div < 0 ? -num / div : num / div;
+    }
+
+    constexpr friend auto operator*(const Rational& a, const Rational& b) {
+        return Rational(a.num * b.num, a.den * b.den);
+    }
+
+    constexpr friend auto operator/(const Rational& a, const Rational& b) {
+        return Rational(a.num * b.den, a.den * b.num);
+    }
+
+    constexpr friend auto operator+(const Rational& a, const Rational& b) {
+        return Rational(a.num * b.den + b.num * a.den, a.den * b.den);
+    }
+
+    constexpr friend auto operator-(const Rational& a, const Rational& b) {
+        return Rational(a.num * b.den - b.num * a.den, a.den * b.den);
+    }
+
+    constexpr friend auto pow(const Rational& a, const Rational& b) {
+        const auto b_float = static_cast<double>(b.num) / b.den;
+        return Rational(
+            static_cast<int64_t>(std::pow(a.num, b_float)), 
+            static_cast<int64_t>(std::pow(a.den, b_float)));
+
+    }
+
+    constexpr explicit operator double() const {
+        return static_cast<double>(num) / den;
+    }
+
+    constexpr auto inverse() const {
+        return Rational(den, num);
+    }
+
+};
 
 template<size_t N>
 constexpr size_t file_hash(char const (&)[N])
@@ -279,10 +331,6 @@ template<typename PackA, typename PackB>
 using pack_remove_all_t = typename PackRemoveAll<PackA, PackB>::Type;
 /// @}
 
-constexpr int gcd(int a, int b) {
-    return b == 0 ? a : gcd(b, a % b);
-}
-
 /// A unit raised to a rational power
 template<typename Unit, int32_t num, int32_t den>
 struct PowerType {
@@ -296,12 +344,8 @@ struct PowerType {
 
 template<typename Unit, int32_t numA, int32_t denA, int32_t numB, int32_t denB>
 constexpr auto power_add(PowerType<Unit, numA, denA>, PowerType<Unit, numB, denB>) {
-    constexpr auto num = numA * denB + numB * denA;
-    constexpr auto den = denA * denB;
-    constexpr auto div = gcd(num, den);
-    constexpr auto den_ = den / div < 0 ? -den / div : den / div;
-    constexpr auto num_ = den / div < 0 ? -num / div : num / div;
-    return PowerType<Unit, num_, den_>{};
+    constexpr auto r = Rational(numA, denA) + Rational(numB, denB);
+    return PowerType<Unit, r.num, r.den>{};
 }
 
 // This overload is needed for type checking, but should never get called as two 
@@ -321,12 +365,8 @@ using add_unit_powers_t = decltype(
 /// Multiplies two powers together
 template<typename Unit, int32_t numA, int32_t denA, int32_t numB, int32_t denB>
 constexpr auto power_mult(PowerType<Unit, numA, denA>, PowerType<Unit, numB, denB>) {
-    constexpr auto num = numA * numB;
-    constexpr auto den = denA * denB;
-    constexpr auto div = gcd(num, den);
-    constexpr auto den_ = den / div < 0 ? -den / div : den / div;
-    constexpr auto num_ = den / div < 0 ? -num / div : num / div;
-    return PowerType<Unit, num_, den_>{};
+    constexpr auto r = Rational(numA, denA) * Rational(numB, denB);
+    return PowerType<Unit, r.num, r.den>{};
 }
 
 // This overload is needed for type checking, but should never get called as two types of
@@ -495,7 +535,7 @@ using power_pack_mult_t =
     typename PowerPackCombine<PackA, PackB, cons_power_mult_t>::Type;
 /// @}
 
-using scale_t = uint64_t;
+using scale_t = Rational;
 
 template<typename Self, typename Other>
 constexpr bool is_semantic_convertable_v = std::is_same_v<Self, Other> || 
@@ -559,14 +599,14 @@ struct Unit {
     constexpr Unit(const 
         Unit<T, otherScale, OtherSemantic, UnitPowerPack>& other,
         std::enable_if_t<is_semantic_convertable_v<SemanticPowerPack, OtherSemantic>, int> = 0)
-        : val(other.val * otherScale / scale) {}
+        : val(static_cast<T>(other.val * static_cast<double>(otherScale / scale))) {}
 
 
     template<typename OtherSemantic, scale_t otherScale>
     constexpr auto operator=(const Unit<T, otherScale, OtherSemantic, UnitPowerPack>& other)
         -> std::enable_if_t<is_semantic_convertable_v<SemanticPowerPack, OtherSemantic>, Unit&> 
     {
-        val = other.val * otherScale / scale;
+        val = static_cast<T>(other.val * static_cast<double>(otherScale / scale));
         return *this;
     }
 
@@ -601,7 +641,7 @@ struct Unit {
     constexpr auto operator+=(const Unit<T, otherScale, OtherSemantic, UnitPowerPack>& other) 
         -> std::enable_if_t<is_semantic_convertable_v<SemanticPowerPack, OtherSemantic>, Unit&>
     {
-        val += other.val * otherScale / scale;
+        val += static_cast<T>(other.val * static_cast<double>(otherScale / scale));
         return *this;
     }
 
@@ -609,7 +649,7 @@ struct Unit {
     constexpr auto operator-=(const Unit<T, otherScale, OtherSemantic, UnitPowerPack>& other) 
         -> std::enable_if_t<is_semantic_convertable_v<SemanticPowerPack, OtherSemantic>, Unit&>
     {
-        val -= other.val * otherScale / scale;
+        val -= static_cast<T>(other.val * static_cast<double>(otherScale / scale));
         return *this;
     }
 
@@ -625,7 +665,7 @@ struct Unit {
 
     /// @brief Returns the value of this unit in the base scale (scale = 1)
     constexpr auto get_in_base_scale() const {
-        return val * scale;
+        return val * static_cast<double>(scale);
     }
 
     /// Strips the semantic subcategory from the unit
@@ -644,10 +684,11 @@ constexpr auto operator*(const Unit<T, scaleA, SemanticA, UnitPowerPackA>& a,
     using NewSemantic = clean_power_pack_t<
         sort_unit_pack_t<power_pack_add_t<SemanticA, SemanticB>>>;
     if constexpr (std::is_same_v<NewPowerPack, Pack<EmptyPack>>) {
-        return a.val * scaleA * b.val * scaleB;
+        return static_cast<T>(a.val * static_cast<double>(scaleA) 
+            * b.val * static_cast<double>(scaleB));
     } else {
-        return Unit<T, scaleA * scaleA, NewSemantic, NewPowerPack>
-            (a.val * b.val * scaleB / scaleA);
+        return Unit<T, scaleA * scaleB, NewSemantic, NewPowerPack>
+            (a.val * b.val);
     }
 }
 
@@ -683,7 +724,7 @@ constexpr auto operator/(Unit<T, scale, Semantic, Units> a, T b)
 template<typename T, scale_t scale, typename Semantic, typename UnitPowerPack>
 constexpr auto operator/(T b, const Unit<T, scale, Semantic, UnitPowerPack>& a)
 {
-    return Unit<T, scale, negate_power_pack_t<Semantic>, 
+    return Unit<T, scale.inverse(), negate_power_pack_t<Semantic>, 
         negate_power_pack_t<UnitPowerPack>>(b / a.val);
 }
 
@@ -721,7 +762,7 @@ constexpr auto operator+(Unit<T, scale, Semantic, Units> a,
                          const Unit<T, otherScale, OtherSemantic, Units>& b)
     -> std::enable_if_t<is_semantic_convertable_v<Semantic, OtherSemantic>, decltype(a)>
 {
-    a.val += b.val * otherScale / scale;
+    a.val += static_cast<T>(b.val * static_cast<double>(otherScale / scale));
     return a;
 }
 
@@ -731,7 +772,7 @@ constexpr auto operator-(Unit<T, scale, Semantic, Units> a,
                          const Unit<T, otherScale, OtherSemantic, Units>& b)
     -> std::enable_if_t<is_semantic_convertable_v<Semantic, OtherSemantic>, decltype(a)>
 {
-    a.val -= b.val * otherScale / scale;
+    a.val -= static_cast<T>(b.val * static_cast<double>(otherScale / scale));
     return a;
 }
 
@@ -745,15 +786,9 @@ template<typename Unit, int32_t unitNum, int32_t unitDen,
     int32_t powerNum, int32_t powerDen>
 struct RaiseUnitPower<PowerType<Unit, unitNum, unitDen>, powerNum, powerDen> {
 private:
-    constexpr static auto new_num = unitNum * powerNum;
-    constexpr static auto new_den = unitDen * powerDen;
-    constexpr static auto divisor = gcd(new_num, new_den);
-    constexpr static auto den = new_den / divisor < 0 ? 
-        -new_den / divisor : new_den / divisor;
-    constexpr static auto num = new_den / divisor < 0 ? 
-        -new_num / divisor : new_num / divisor;
+    constexpr static auto r = Rational(unitNum, unitDen) * Rational(powerNum, powerDen);
 public:
-    using Type = PowerType<Unit, num, den>;
+    using Type = PowerType<Unit, r.num, r.den>;
 };
 /// @}
 
@@ -785,9 +820,10 @@ using raise_power_pack_t = typename RaisePowerPack<PowerPack, powerNum, powerDen
 template<int32_t powerNum, int32_t powerDen, typename T, scale_t scale, typename Semantic, typename Units>
 constexpr auto pow(const Unit<T, scale, Semantic, Units>& a)
 {
-    return Unit<T, 1, raise_power_pack_t<Semantic, powerNum, powerDen>, 
+    return Unit<T, Rational(1), 
+        raise_power_pack_t<Semantic, powerNum, powerDen>, 
         raise_power_pack_t<Units, powerNum, powerDen>>
-            (std::pow(a.val * scale, static_cast<double>(powerNum) / powerDen));
+            (std::pow(a.val * static_cast<double>(scale), static_cast<double>(powerNum) / powerDen));
 }
 
 template<typename TargetSemantic, typename T, scale_t scale, typename Semantic, typename Units>
